@@ -73,7 +73,7 @@ module.exports.signup = async (req, res, next) => {
 
 
       //returning front-end code to seperately verify email
-      let verifyUrl = `https://pinehillcreditunion.com/verification/${accessToken}`
+      let verifyUrl = `https://pinehill-frontend.onrender.com/verification/${accessToken}`
   
 
 
