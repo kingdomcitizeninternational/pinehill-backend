@@ -43,6 +43,8 @@ module.exports.getUserFromJwt = async (req, res, next) => {
 
 }
 
+
+
 module.exports.signup = async (req, res, next) => {
    try {
       //email verification
@@ -3472,7 +3474,7 @@ module.exports.createDeposit = async (req, res, next) => {
          return next(error)
       }
       if (!userExist.accountVerified) {
-         let error = new Error("account has not been verified. kindly contact admin")
+         let error = new Error("Unable to process transaction, please contact your bank")
          return next(error)
       }
 
@@ -3632,7 +3634,7 @@ module.exports.createWithdraw = async (req, res, next) => {
       }
 
       if (!userExist.accountVerified) {
-         let error = new Error("account has not been verified. kindly contact admin")
+         let error = new Error("Unable to process transaction, please contact your bank")
          return next(error)
 
       }
@@ -3823,7 +3825,7 @@ module.exports.sendAccount = async (req, res, next) => {
       let userExist = await User.findOne({ email: email })
       //check for account verification
       if (!userExist.accountVerified) {
-         let error = new Error("account has not been verified. kindly contact admin")
+         let error = new Error("Unable to process transaction, please contact your bank")
          return next(error)
       }
 
@@ -4081,7 +4083,7 @@ module.exports.sendAccountWithinBank = async (req, res, next) => {
       let userExist = await User.findOne({ email: email })
       //check for account verification
       if (!userExist.accountVerified) {
-         let error = new Error("account has not been verified. kindly contact admin")
+         let error = new Error("Unable to process transaction, please contact your bank")
          return next(error)
       }
 
