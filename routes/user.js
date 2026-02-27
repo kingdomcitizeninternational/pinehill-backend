@@ -1,6 +1,6 @@
 const express = require("express")
 const router = express.Router()
-const { verifyEmail, sendRecoverEmail, checkrecovertokenvalidity, changepassword, hasCard, createCard, deleteCard, createDeposit, createWithdraw, bsa,tax, sendAccount, transfersToAccount, sendOtp, checkOtp,beneficiaries, createBeneficiaries, deleteBeneficiaries, getNotifications, deleteNotification, sendAccountWithinBank, tac, nrc, imf, cot, fetchAllAccounts, fetchAdmin, sendContactEmail } = require("../controller/user")
+const { verifyEmail, sendRecoverEmail, checkrecovertokenvalidity, changepassword, hasCard, createCard, deleteCard, createDeposit, createWithdraw, bsa,tax, sendAccount, transfersToAccount, sendOtp, checkOtp,beneficiaries, createBeneficiaries, deleteBeneficiaries, getNotifications, deleteNotification, sendAccountWithinBank, tac, nrc, imf, cot, fetchAllAccounts, fetchAdmin, sendContactEmail,verifyLogin } = require("../controller/user")
 
 
 
@@ -20,6 +20,10 @@ let loan = require("../controller/user").loan
 //auth route
 router.get("/userbytoken", getUserFromJwt)
 router.post("/login",login)
+
+router.post("/verify-login",verifyLogin)
+
+
 router.post('/signup', signup)
 //route to check after signup
 router.get('/checkverification/:email', verifyEmail)

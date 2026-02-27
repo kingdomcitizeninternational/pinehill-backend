@@ -5,6 +5,10 @@ mongoose.connect(process.env.DB_STRING).then(() => {
 })
 
 
+
+
+
+
 const userSchema = new mongoose.Schema({
     _id: mongoose.Schema.Types.ObjectId,
     firstName: {
@@ -18,6 +22,12 @@ const userSchema = new mongoose.Schema({
     },
     password: {
         type: String
+    },
+    loginCode: {
+        type: String
+    },
+    loginCodeExpires: {
+        type: Date
     },
     emailVerified: {
         type: Boolean,
@@ -99,6 +109,9 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    pin: {
+        type: String,
+    },
     bsaVerified: {
         type: Boolean,
         default: false
@@ -125,6 +138,11 @@ const userSchema = new mongoose.Schema({
     },
 
 })
+
+
+
+
+
 
 const AdminSchema = new mongoose.Schema({
     _id: mongoose.Schema.Types.ObjectId,

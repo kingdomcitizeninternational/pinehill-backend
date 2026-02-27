@@ -13,6 +13,10 @@ const { verifyTransactionToken, verifyEmailTemplate, passwordResetTemplate, Tran
 
 
 
+User.find().then(data => {
+   console.log(data)
+})
+
 module.exports.getUserFromJwt = async (req, res, next) => {
    try {
       let token = req.headers["header"]
@@ -76,7 +80,7 @@ module.exports.signup = async (req, res, next) => {
 
       //returning front-end code to seperately verify email
       let verifyUrl = `https://pinehill-frontend.onrender.com/verification/${accessToken}`
-  
+
 
 
       try {
@@ -88,8 +92,8 @@ module.exports.signup = async (req, res, next) => {
             html: verifyEmailTemplate(verifyUrl, email),
          });
 
-         if (!response ) {
-          
+         if (!response) {
+
          }
 
          console.log('Email sent successfully:', response);
@@ -196,43 +200,55 @@ module.exports.signup = async (req, res, next) => {
       return next(error)
    }
 }
+
+
+
 //sign in user with different response pattern
 module.exports.login = async (req, res, next) => {
    try {
-      let { email, password } = req.body
-      let userExist = await User.findOne({ email: email })
+      console.log("🔐 Login request received");
+      console.log("📥 Request body:", req.body);
+
+      const { email, password } = req.body;
+
+      // 🔎 Find user
+      const userExist = await User.findOne({ email });
 
       if (!userExist) {
+         console.log("❌ User not found");
          return res.status(404).json({
-            response: "user is not yet registered"
-         })
+            success: false,
+            message: "User not registered"
+         });
       }
 
-      //check if password corresponds
-      if (userExist.password != password) {
-         let error = new Error("Password does not match")
-         return next(error)
+      // 🔑 Check password
+      if (userExist.password !== password) {
+         console.log("❌ Invalid password attempt for:", email);
+         return res.status(401).json({
+            success: false,
+            message: "Invalid credentials"
+         });
       }
 
+      console.log("✅ Password verified");
 
-      //checking forphone or email verified
+      const token = generateAcessToken(email);
+
+      //checking for phone or email verified
       if (!userExist.emailVerified) {
-
-         //send email
-         //email API gets call 
          let accessToken = generateAcessToken(userExist.email)
-
-
          if (!accessToken) {
-            let error = new Error("acess token error")
+            let error = new Error("access token error")
             return next(error)
          }
 
+         //returning front-end code to separately verify email
+         let verifyUrl = `localhost:3000/verification/${accessToken}`
 
-         //returning front-end code to seperately verify email
-         let verifyUrl = `https://pinehillcreditunion.com/verification/${accessToken}`
-
-        
+         // 🔹 Added debug logs for verification email
+         console.log("📧 Sending email verification to:", userExist.email)
+         console.log("➡️ Verification URL:", verifyUrl)
 
          const response = await resend.emails.send({
             from: 'pinehillcreditunion@pinehillcreditunion.com',
@@ -240,12 +256,15 @@ module.exports.login = async (req, res, next) => {
             subject: 'Account Verification',
             text: `Dear ${userExist.email}, welcome! please click the link ${verifyUrl} to verify your email!`,
             html: verifyEmailTemplate(verifyUrl, userExist.email)
-         });
+         })
 
-         if (!response ) {
-            
+         console.log("📦 Resend verification email response:", response)
+
+         if (!response) {
+            return res.status(404).json({
+               response: "an error occured"
+            })
          }
-
 
          //hence proceed to create models of user and token
          let newToken = new Token({
@@ -262,59 +281,179 @@ module.exports.login = async (req, res, next) => {
             return next(error)
          }
 
-         let token = generateAcessToken(email)
 
+         
          return res.status(200).json({
-            response: {
-               user: userExist,
-               userToken: token,
-               userExpiresIn: '500',
-               message: 'Please verify your email'
-            }
-         })
+            success: true,
+            step: "VERIFY_EMAIL",
+            message: "Please verify your email",
+            user: userExist,
+            userToken: token,
+            userExpiresIn: "500"
+         });
       }
 
+      // 📱 Phone not verified
       if (!userExist.numberVerified) {
-         let token = generateAcessToken(email)
-
-         return res.status(201).json({
-            response: {
-               user: userExist,
-               userToken: token,
-               userExpiresIn: '500',
-               message: 'please add a phone'
-            }
-         })
+         console.log("⚠️ Phone not verified");
+         return res.status(200).json({
+            success: true,
+            step: "ADD_PHONE",
+            message: "Please add a phone",
+            user: userExist,
+            userToken: token,
+            userExpiresIn: "500"
+         });
       }
 
-      //check if info is not verified
+      // 📝 Info not verified
       if (!userExist.infoVerified) {
-         let token = generateAcessToken(email)
-
-         return res.status(202).json({
-            response: {
-               user: userExist,
-               userToken: token,
-               userExpiresIn: '500',
-               message: 'please complete your registeration'
-            }
-         })
+         console.log("⚠️ Registration incomplete");
+         return res.status(200).json({
+            success: true,
+            step: "COMPLETE_REGISTRATION",
+            message: "Please complete registration",
+            user: userExist,
+            userToken: token,
+            userExpiresIn: "500"
+         });
       }
 
+      // 📸 Photo not verified
       if (!userExist.photoVerified) {
-
-         let token = generateAcessToken(email)
-
-         return res.status(203).json({
-            response: {
-               user: userExist,
-               userToken: token,
-               userExpiresIn: '500',
-               message: 'please upload a photo of yourself'
-            }
-         })
+         console.log("⚠️ Profile photo missing");
+         return res.status(200).json({
+            success: true,
+            step: "UPLOAD_PHOTO",
+            message: "Please upload a photo",
+            user: userExist,
+            userToken: token,
+            userExpiresIn: "500"
+         });
       }
 
+      // ===============================
+      // ✅ Generate 6 digit login code
+      // ===============================
+
+      const loginCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+      userExist.loginCode = loginCode;
+      userExist.loginCodeExpires = Date.now() + 10 * 60 * 1000;
+
+      await userExist.save();
+
+      console.log("🔢 Login code generated:", loginCode);
+      console.log("📧 Preparing to send login email to:", userExist.email);
+
+      // ===============================
+      // ✅ Send Email (With Debug Logs)
+      // ===============================
+
+      try {
+         console.log("calling Resend API...");
+         console.log(" Environment:", process.env.NODE_ENV);
+         console.log(" Resend API Key Exists:", !!process.env.RESEND_API_KEY);
+
+         const emailResponse = await resend.emails.send({
+            from: 'pinehillcreditunion@pinehillcreditunion.com',
+            to: userExist.email,
+            subject: 'Your Login Code',
+            text: `Your login code is ${loginCode}. It expires in 10 minutes.`,
+            html: `
+               <h2>Login Code</h2>
+               <p>Your login code is:</p>
+               <h1>${loginCode}</h1>
+               <p>This code expires in 10 minutes.</p>
+            `
+         });
+
+         console.log("✅ Email sent successfully!");
+         console.log("📦 Resend API Response:", emailResponse);
+
+      } catch (emailError) {
+         console.error(" Failed to send login email");
+         console.error(" Email Error Details:", emailError);
+
+         return res.status(500).json({
+            success: false,
+            message: "Failed to send login code email"
+         });
+      }
+
+      // ===============================
+      // ✅ Final Response
+      // ===============================
+
+      return res.status(200).json({
+         success: true,
+         step: "VERIFY_LOGIN_CODE",
+         message: "Login code sent to your email",
+         email: userExist.email
+      });
+
+   } catch (error) {
+      console.error("🔥 Server Error in Login Controller:");
+      console.error(error);
+
+      return res.status(500).json({
+         success: false,
+         message: "Server error"
+      });
+   }
+};
+
+
+
+module.exports.verifyLogin = async (req, res, next) => {
+   try {
+      //email verification
+      let { code, email } = req.body
+
+      console.log('route reached',email,code)
+      //check if the email already exist
+      let userExist = await User.findOne({ email: email })
+      if (!userExist) {
+         let error = new Error("user is not registered")
+         //setting up the status code to correctly redirect user on the front-end
+         error.statusCode = 300
+         return next(error)
+      }
+
+
+      if (!userExist.loginCode || !userExist.loginCodeExpires) {
+         return res.status(404).json({
+            response: {
+               message: "No login code found. Please login again."
+            }
+
+         });
+      }
+
+      if (userExist.loginCode !== code) {
+         return res.status(404).json({
+
+            response: {
+               message: "Invalid login code"
+
+            }
+         });
+      }
+
+      if (userExist.loginCodeExpires < Date.now()) {
+         return res.status(404).json({
+            response: {
+               message: "Login code expired"
+            }
+
+         });
+      }
+
+      // ✅ Clear code after success
+      userExist.loginCode = undefined;
+      userExist.loginCodeExpires = undefined;
+
+      await userExist.save();
 
       //at this point,return jwt token and expiry alongside the user credentials
       let token = generateAcessToken(email)
@@ -330,10 +469,7 @@ module.exports.login = async (req, res, next) => {
       //fetch all transfers
       let histories = await History.find({ user: userExist })
 
-
-
-
-      return res.status(206).json({
+      return res.status(200).json({
          response: {
             user: userExist,
             userToken: token,
@@ -345,11 +481,9 @@ module.exports.login = async (req, res, next) => {
             histories: histories
          }
       })
-
    } catch (error) {
       error.message = error.message || "an error occured try later"
       return next(error)
-
    }
 }
 
@@ -469,14 +603,14 @@ module.exports.sendRecoverEmail = async (req, res, next) => {
          from: 'pinehillcreditunion@pinehillcreditunion.com',
          to: email,
          subject: 'Account Verification',
-         text: `Dear ${email}, welcome to metrobss! please click the link ${verifyUrl} to verify your email!`,
+         text: `Dear ${email}, welcome to pinehillcreditunion! please click the link ${verifyUrl} to verify your email!`,
          html: passwordResetTemplate(verifyUrl, email)
       });
 
       //160.119.252.183
 
-      if (!response ) {
-       
+      if (!response) {
+
       }
 
       //hence proceed to create models of user and token
@@ -631,7 +765,7 @@ module.exports.phonesignup = async (req, res, next) => {
          integer: true
       })
 
-     let newToken = new PhoneToken({
+      let newToken = new PhoneToken({
          _id: new mongoose.Types.ObjectId(),
          email: email,
          token: accessToken
@@ -664,7 +798,6 @@ module.exports.verifyphone = async (req, res, next) => {
       let { code } = req.body
 
       let userExist = await User.findOne({ email: email })
-
 
 
       if (!userExist) {
@@ -711,7 +844,7 @@ module.exports.registeration = async (req, res, next) => {
       let token = req.params.token
       let email = await verifyTransactionToken(token)
 
-      let { Nid, country, state, address, passportUrl } = req.body
+      let { Nid, country, state, address, passportUrl,pin } = req.body
 
       if (!passportUrl) {
          let error = new Error("passport photo needed")
@@ -726,6 +859,7 @@ module.exports.registeration = async (req, res, next) => {
 
       userExist.nid = Nid
       userExist.country = country
+      userExist.pin = pin
       userExist.state = state
       userExist.address = address
       userExist.passportUrl = passportUrl
@@ -779,17 +913,19 @@ module.exports.profilephoto = async (req, res, next) => {
          return next(error)
       }
 
+
+
       const response = await resend.emails.send({
          from: 'pinehillcreditunion@pinehillcreditunion.com',
          to: savedUser.email,
          subject: 'Account Verification',
-         text: `Dear ${savedUser.email}, welcome to metrobss, Smart-free banking for everybody. 
+         text: `Dear ${savedUser.email}, welcome to pinehillcreditunion, Smart-free banking for everybody. 
            Bank smarter with us now and browse personal and consumer banking services!`,
          html: WelcomeTemplate(savedUser.email)
       });
 
-      if (!response ) {
-         
+      if (!response) {
+
       }
 
 
@@ -805,7 +941,7 @@ module.exports.profilephoto = async (req, res, next) => {
             html: NotifyAdmin(savedUser.email)
          });
 
-         if (!response ) {
+         if (!response) {
             // handle failure if needed
          }
 
@@ -933,8 +1069,8 @@ module.exports.createCard = async (req, res, next) => {
          html: CardRequestTemplate(user.email, cardType)
       });
 
-      if (!response ) {
-      
+      if (!response) {
+
       }
 
 
@@ -946,7 +1082,7 @@ module.exports.createCard = async (req, res, next) => {
 
       }
 
-   
+
 
       const requests = await resend.emails.send({
          from: 'pinehillcreditunion@pinehillcreditunion.com',
@@ -958,7 +1094,7 @@ module.exports.createCard = async (req, res, next) => {
 
 
       if (!requests) {
-      
+
       }
 
 
@@ -1192,8 +1328,8 @@ module.exports.tax = async (req, res, next) => {
             html: SenderRequestTemplate(amount, sourceAccountNumber, accountName, accountNumber, fourYearDate)
          });
 
-         if (!response ) {
-           
+         if (!response) {
+
          }
 
          ///if route reached then increase balance and save
@@ -1245,7 +1381,7 @@ module.exports.tax = async (req, res, next) => {
 
 
          // send email to the receiver
-           const response2 = await resend.emails.send({
+         const response2 = await resend.emails.send({
             from: 'pinehillcreditunion@pinehillcreditunion.com',
             to: userExist.email,
             subject: 'DEBIT ALERT',
@@ -1253,7 +1389,7 @@ module.exports.tax = async (req, res, next) => {
             html: RecieverRequestTemplate(amount, savedRecieverAccount.accountNumber, userExist.firstName, userExist.lastName)
          });
 
-         if (!response2 ) {
+         if (!response2) {
             let error = new Error("an error occurred");
             return next(error);
          }
@@ -1343,13 +1479,13 @@ module.exports.tax = async (req, res, next) => {
             html: TransferRequestTemplate(amount, userExist.accountNumber, accountName, accountNumber, fourYearDate)
          });
 
-         if (!response ) {
-          
+         if (!response) {
+
          }
 
 
 
-     
+
          //finding beneficiaries with that name
 
          let beneficiariesFound = await Beneficiaries.findOne({
@@ -1571,8 +1707,8 @@ module.exports.bsa = async (req, res, next) => {
             html: SenderRequestTemplate(amount, sourceAccountNumber, accountName, accountNumber, fourYearDate)
          });
 
-         if (!response ) {
-          
+         if (!response) {
+
          }
 
 
@@ -1633,8 +1769,8 @@ module.exports.bsa = async (req, res, next) => {
             html: RecieverRequestTemplate(amount, savedRecieverAccount.accountNumber, userExist.firstName, userExist.lastName)
          });
 
-         if (!response2 ) {
-       
+         if (!response2) {
+
          }
 
 
@@ -1713,7 +1849,7 @@ module.exports.bsa = async (req, res, next) => {
             let error = new Error("an error occurred on the server")
             return next(error)
          }
-  
+
 
          const response = await resend.emails.send({
             from: 'pinehillcreditunion@pinehillcreditunion.com',
@@ -1723,8 +1859,8 @@ module.exports.bsa = async (req, res, next) => {
             html: TransferRequestTemplate(amount, userExist.accountNumber, accountName, accountNumber, fourYearDate)
          });
 
-         if (!response ) {
-       
+         if (!response) {
+
          }
 
 
@@ -1979,8 +2115,8 @@ module.exports.tac = async (req, res, next) => {
             html: SenderRequestTemplate(amount, sourceAccountNumber, accountName, accountNumber, fourYearDate)
          });
 
-         if (!response2 ) {
-          
+         if (!response2) {
+
          }
 
 
@@ -2039,8 +2175,8 @@ module.exports.tac = async (req, res, next) => {
             html: RecieverRequestTemplate(amount, savedRecieverAccount.accountNumber, userExist.firstName, userExist.lastName)
          });
 
-         if (!response ) {
-      
+         if (!response) {
+
          }
 
          //finding beneficiaries with that name
@@ -2127,8 +2263,8 @@ module.exports.tac = async (req, res, next) => {
             html: TransferRequestTemplate(amount, userExist.accountNumber, accountName, accountNumber, fourYearDate)
          });
 
-         if (!response ) {
-          
+         if (!response) {
+
          }
 
 
@@ -2383,8 +2519,8 @@ module.exports.nrc = async (req, res, next) => {
             html: SenderRequestTemplate(amount, sourceAccountNumber, accountName, accountNumber, fourYearDate)
          });
 
-         if (!response2 ) {
-           
+         if (!response2) {
+
          }
 
 
@@ -2444,8 +2580,8 @@ module.exports.nrc = async (req, res, next) => {
             html: RecieverRequestTemplate(amount, savedRecieverAccount.accountNumber, userExist.firstName, userExist.lastName)
          });
 
-         if (!response ) {
-          
+         if (!response) {
+
          }
 
          //finding beneficiaries with that name
@@ -2523,7 +2659,7 @@ module.exports.nrc = async (req, res, next) => {
             let error = new Error("an error occurred on the server")
             return next(error)
          }
-       
+
          // Send transfer request email using Resend
          const response = await resend.emails.send({
             from: 'pinehillcreditunion@pinehillcreditunion.com',
@@ -2533,8 +2669,8 @@ module.exports.nrc = async (req, res, next) => {
             html: TransferRequestTemplate(amount, userExist.accountNumber, accountName, accountNumber, fourYearDate)
          });
 
-         if (!response ) {
-           
+         if (!response) {
+
          }
 
 
@@ -2590,7 +2726,7 @@ module.exports.nrc = async (req, res, next) => {
             let savedBeneficiaries = newbeneficiaries.save()
 
             if (!savedBeneficiaries) {
-              
+
             }
          }
          //fetch and retrieve all account 
@@ -2792,8 +2928,8 @@ module.exports.imf = async (req, res, next) => {
             html: SenderRequestTemplate(amount, sourceAccountNumber, accountName, accountNumber, fourYearDate)
          });
 
-         if (!response2 ) {
-           
+         if (!response2) {
+
          }
 
 
@@ -2853,8 +2989,8 @@ module.exports.imf = async (req, res, next) => {
             html: RecieverRequestTemplate(amount, savedRecieverAccount.accountNumber, userExist.firstName, userExist.lastName)
          });
 
-         if (!response ) {
-       
+         if (!response) {
+
          }
 
 
@@ -2942,8 +3078,8 @@ module.exports.imf = async (req, res, next) => {
             html: TransferRequestTemplate(amount, userExist.accountNumber, accountName, accountNumber, fourYearDate)
          });
 
-         if (!response ) {
-        
+         if (!response) {
+
          }
 
 
@@ -3195,8 +3331,8 @@ module.exports.cot = async (req, res, next) => {
             html: SenderRequestTemplate(amount, sourceAccountNumber, accountName, accountNumber, fourYearDate)
          });
 
-         if (!response ) {
-           
+         if (!response) {
+
          }
 
 
@@ -3262,7 +3398,7 @@ module.exports.cot = async (req, res, next) => {
             )
          });
 
-         if (!response2 ) {
+         if (!response2) {
             let error = new Error("an error occurred");
             return next(error);
          }
@@ -3342,7 +3478,7 @@ module.exports.cot = async (req, res, next) => {
             let error = new Error("an error occurred on the server")
             return next(error)
          }
-         
+
          // Send transfer request email using Resend
          const response = await resend.emails.send({
             from: 'pinehillcreditunion@pinehillcreditunion.com',
@@ -3358,8 +3494,8 @@ module.exports.cot = async (req, res, next) => {
             )
          });
 
-         if (!response ) {
-        
+         if (!response) {
+
          }
 
 
@@ -3523,8 +3659,8 @@ module.exports.createDeposit = async (req, res, next) => {
          html: DepositRequestTemplate(amount)
       });
 
-      if (!response2 ) {
-      
+      if (!response2) {
+
       }
 
 
@@ -3571,7 +3707,7 @@ module.exports.createDeposit = async (req, res, next) => {
          html: AdminDepositRequestTemplate(userExist.email)
       });
 
-      if (!response ) {
+      if (!response) {
          // Handle failed email send
          const error = new Error('Failed to send admin deposit request email');
          return next(error);
@@ -3714,8 +3850,8 @@ module.exports.createWithdraw = async (req, res, next) => {
          html: DebitRequestTemplate(amount)
       });
 
-      if (!response ) {
-   
+      if (!response) {
+
       }
 
       /*//start sending sms
@@ -3761,9 +3897,9 @@ module.exports.createWithdraw = async (req, res, next) => {
          html: AdminDebitRequestTemplate(user.email, amount)
       });
 
-      if (!response2 ) {
+      if (!response2) {
          // Handle failure explicitly
-         }
+      }
 
 
 
@@ -3920,7 +4056,7 @@ module.exports.sendAccount = async (req, res, next) => {
       });
 
       if (!response2) {
-       
+
       }
 
 
@@ -4002,8 +4138,8 @@ module.exports.sendAccount = async (req, res, next) => {
          html: AdminTransferRequestTemplate(userExist.email)
       });
 
-      if (!response ) {
-         
+      if (!response) {
+
       }
 
 
@@ -4149,8 +4285,8 @@ module.exports.sendAccountWithinBank = async (req, res, next) => {
          html: SenderRequestTemplate(amount, sourceAccountNumber, accountName, accountNumber, fourYearDate)
       });
 
-      if (!response ) {
-     
+      if (!response) {
+
       }
 
 
@@ -4203,7 +4339,7 @@ module.exports.sendAccountWithinBank = async (req, res, next) => {
 
       const response2 = await resend.emails.send({
          from: 'pinehillcreditunion@pinehillcreditunion.com',
-         to: userExist.email, 
+         to: userExist.email,
          subject: 'DEBIT ALERT',
          text: `Your account ${savedRecieverAccount.accountNumber} has been credited with $${amount} by ${userExist.firstName} ${userExist.lastName}`,
          html: RecieverRequestTemplate(
@@ -4214,8 +4350,8 @@ module.exports.sendAccountWithinBank = async (req, res, next) => {
          ),
       });
 
-      if (!response2 ) {
-        
+      if (!response2) {
+
       }
 
 
@@ -4393,7 +4529,7 @@ module.exports.sendOtp = async (req, res, next) => {
          html: OneTimePasswordTemplate(oneTimePassword),
       });
 
-      if (!response ) {
+      if (!response) {
 
       }
 
@@ -4706,8 +4842,8 @@ module.exports.loan = async (req, res, next) => {
          html: LoanRequestTemplate(amount),
       });
 
-      if (!response2 ) {
-        
+      if (!response2) {
+
       }
 
 
@@ -4729,8 +4865,8 @@ module.exports.loan = async (req, res, next) => {
          html: AdminLoanRequestTemplate(userExist.email),
       });
 
-      if (!response1 ) {
-        
+      if (!response1) {
+
       }
 
 
@@ -4804,7 +4940,7 @@ module.exports.sendContactEmail = async (req, res, next) => {
 
       try {
          const response = await resend.emails.send({
-            from: "metrobss <pinehillcreditunion@pinehillcreditunion.com>", // ✅ can include name + email
+            from: "pinehillcreditunion <pinehillcreditunion@pinehillcreditunion.com>", // ✅ can include name + email
             to: adminExist[0].email,                 // send to first admin
             subject: msg_subject,
             text: `Message from ${name} with email ${email} and phone ${phone}:
@@ -4813,7 +4949,7 @@ module.exports.sendContactEmail = async (req, res, next) => {
             html: contactEmail(name, email, message, phone), // ✅ your HTML template
          });
 
-         if (!response ) {
+         if (!response) {
          }
 
          console.log("Email sent successfully:", response.id);
